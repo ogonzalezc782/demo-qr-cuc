@@ -64,7 +64,7 @@
   <div class="hero">
     <div class="panel"><div class="big" id="total">0</div><div class="big-sub">Celulares conectados</div></div>
     <div class="panel accent"><div class="big" id="unique">0%</div><div class="big-sub">Con huella única e irrepetible</div></div>
-    <div class="panel green"><div class="big" id="battery">—</div><div class="big-sub">Batería promedio del aula</div></div>
+    <div class="panel green"><div class="big" id="battery">—</div><div class="big-sub">Batería promedio de la sala</div></div>
     <div class="panel"><div class="big" id="cores">—</div><div class="big-sub">Núcleos de CPU promedio</div></div>
   </div>
 
@@ -97,14 +97,17 @@
     if (confirm('¿Borrar todos los datos capturados? Esto reinicia la demo.')) socket.emit('reset');
   };
 
+  // Los textos vienen de los celulares: escaparlos antes de meterlos en innerHTML
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
   function bars(el, entries, total) {
     if (!entries.length) { el.innerHTML = '<p class="muted">—</p>'; return; }
     const max = Math.max(...entries.map((e) => e[1]));
     el.innerHTML = entries.map(([label, n]) => {
       const pct = max ? Math.round((n / max) * 100) : 0;
-      return `<div class="bar-row"><span class="bar-label">${label}</span>
+      return `<div class="bar-row"><span class="bar-label" title="${esc(label)}">${esc(label)}</span>
         <span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span>
-        <span class="bar-val">${n}</span></div>`;
+        <span class="bar-val">${esc(n)}</span></div>`;
     }).join('');
   }
 
@@ -119,12 +122,12 @@
     bars(document.getElementById('byType'), s.byType, s.total);
 
     const chips = [];
-    if (s.timezones.length) chips.push(`<span class="chip">🌎 <b>${s.timezones[0][0]}</b></span>`);
-    if (s.languages.length) chips.push(`<span class="chip">🗣️ <b>${s.languages[0][0]}</b> y ${s.languages.length - 1} más</span>`);
+    if (s.timezones.length) chips.push(`<span class="chip">🌎 <b>${esc(s.timezones[0][0])}</b></span>`);
+    if (s.languages.length) chips.push(`<span class="chip">🗣️ <b>${esc(s.languages[0][0])}</b> y ${s.languages.length - 1} más</span>`);
     chips.push(`<span class="chip">🔋 <b>${s.lowBattery}</b> con batería baja (≤20%)</span>`);
     chips.push(`<span class="chip">⚡ <b>${s.charging}</b> cargando ahora</span>`);
     chips.push(`<span class="chip">🌙 <b>${s.darkPct}%</b> en modo oscuro</span>`);
-    if (s.topGpu.length) chips.push(`<span class="chip">🎮 <b>${s.topGpu[0][0].slice(0, 28)}</b></span>`);
+    if (s.topGpu.length) chips.push(`<span class="chip">🎮 <b>${esc(s.topGpu[0][0].slice(0, 28))}</b></span>`);
     document.getElementById('chips').innerHTML = chips.join('');
 
     const feed = document.getElementById('feed');
@@ -132,8 +135,8 @@
     feed.innerHTML = s.recent.map((d) => {
       const name = [d.os, d.osVersion].filter(Boolean).join(' ') + (d.model ? ' · ' + d.model : '') + ' · ' + d.browser;
       const batt = d.battery !== null ? d.battery + '%' + (d.charging ? '⚡' : '') : '';
-      return `<div class="feed-item"><span>${name} <span class="muted">${d.screen}</span></span>
-        <span><span class="fp">#${d.fp}</span> ${batt}</span></div>`;
+      return `<div class="feed-item"><span>${esc(name)} <span class="muted">${esc(d.screen)}</span></span>
+        <span><span class="fp">#${esc(d.fp)}</span> ${esc(batt)}</span></div>`;
     }).join('');
   });
 })();

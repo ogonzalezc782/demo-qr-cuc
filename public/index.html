@@ -194,9 +194,11 @@
 
   socket.on('reset', () => location.reload());
 
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
   function row(k, v) {
     if (v === null || v === undefined || v === '') return '';
-    return `<li><span class="k">${k}</span><span class="v">${v}</span></li>`;
+    return `<li><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></li>`;
   }
 
   function showReveal(matches) {
@@ -223,9 +225,10 @@
     ].join('');
 
     const unique = matches === 0 || matches === null;
+    const fp = esc(d.fingerprint.slice(0, 8));
     document.getElementById('fpWarn').innerHTML = unique
-      ? `🔒 Tu huella digital es <b>#${d.fingerprint.slice(0, 8)}</b>.<br>En esta sala <b>no hay ningún otro celular igual al tuyo</b>. Así te pueden seguir por internet sin cookies y sin tu nombre.`
-      : `🔒 Tu huella es <b>#${d.fingerprint.slice(0, 8)}</b> y coincide con ${matches} más. Suele pasar entre iPhones del mismo modelo. Igual sigues siendo rastreable combinando otros datos.`;
+      ? `🔒 Tu huella digital es <b>#${fp}</b>.<br>En esta sala <b>no hay ningún otro celular igual al tuyo</b>. Así te pueden seguir por internet sin cookies y sin tu nombre.`
+      : `🔒 Tu huella es <b>#${fp}</b> y coincide con ${esc(matches)} más. Suele pasar entre iPhones del mismo modelo. Igual sigues siendo rastreable combinando otros datos.`;
     document.getElementById('meInfo').textContent = 'Nada de esto se guarda. Se borra al terminar la charla.';
   }
 })();
