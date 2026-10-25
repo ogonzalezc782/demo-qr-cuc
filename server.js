@@ -14,6 +14,9 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_KEY = process.env.ADMIN_KEY || 'cuc2026';
 const PUBLIC_URL = process.env.PUBLIC_URL || ''; // opcional: fuerza la URL del QR
 const MAX_DEVICES = 1000;
+// Compañía de internet por IP (ip-api.com). La IP se consulta y se descarta; IP_LOOKUP=off lo apaga.
+const IP_LOOKUP = process.env.IP_LOOKUP !== 'off';
+const A11Y_KEYS = ['motion', 'contrast', 'forced', 'inverted', 'transparency', 'largeText'];
 
 const app = express();
 app.set('trust proxy', true);
@@ -47,7 +50,70 @@ function sanitize(d = {}) {
     darkMode: d.darkMode === true,
     connection: str(d.connection, 15),
     fingerprint: str(d.fingerprint, 40) || 'sin-huella',
+    app: str(d.app, 30),
+    a11y: Array.isArray(d.a11y) ? A11Y_KEYS.filter((k) => d.a11y.includes(k)) : [],
   };
+}
+
+/* ---------- Compañía de internet ---------- */
+const ISP_NAMES = [
+  [/instituto costarricense|\bice\b|k[oö]lbi/i, 'Kölbi'],
+  [/claro|telmex|am[eé]rica m[oó]vil/i, 'Claro'],
+  [/liberty|telef[oó]nica|movistar/i, 'Liberty'],
+  [/cabletica|cable tica/i, 'Cabletica'],
+  [/millicom|tigo|amnet/i, 'Tigo'],
+  [/telecable/i, 'Telecable'],
+  [/racsa|radiogr[aá]fica/i, 'RACSA'],
+];
+const ispName = (raw) => (ISP_NAMES.find(([re]) => re.test(raw)) || [, str(raw, 30)])[1];
+
+function clientIp(socket) {
+  const xff = socket.handshake.headers['x-forwarded-for'];
+  const ip = (typeof xff === 'string' && xff.split(',')[0].trim()) || socket.handshake.address || '';
+  return ip.replace(/^::ffff:/, '');
+}
+const isPrivateIp = (ip) =>
+  !ip || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|f[cd]|fe80)/i.test(ip);
+// El simulador corre en la misma compu: solo a él se le acepta una compañía inventada
+const isLocalSimulator = (socket) =>
+  !socket.handshake.headers['x-forwarded-for'] &&
+  /^(127\.|::1$|::ffff:127\.)/.test(socket.handshake.address || '');
+
+// Cola de consultas: ip -> [visitorIds]. Vive solo hasta que se consulta, luego se descarta.
+const ipQueue = new Map();
+let ipTimer = null;
+
+function queueIpLookup(ip, id) {
+  if (!ipQueue.has(ip)) ipQueue.set(ip, []);
+  ipQueue.get(ip).push(id);
+  if (!ipTimer) ipTimer = setTimeout(flushIpLookups, 1500);
+}
+
+async function flushIpLookups() {
+  ipTimer = null;
+  const batch = [...ipQueue.entries()].slice(0, 100); // límite de ip-api: 100 IPs por consulta
+  for (const [ip] of batch) ipQueue.delete(ip);
+  if (ipQueue.size) ipTimer = setTimeout(flushIpLookups, 4500); // y 15 consultas por minuto
+  try {
+    const res = await fetch('http://ip-api.com/batch?fields=status,isp,org,city,mobile', {
+      method: 'POST',
+      body: JSON.stringify(batch.map(([ip]) => ip)),
+      signal: AbortSignal.timeout(5000),
+    });
+    const out = await res.json();
+    out.forEach((r, i) => {
+      if (!r || r.status !== 'success') return;
+      const net = { isp: ispName(r.isp || r.org || ''), city: str(r.city, 40), mobileNet: r.mobile === true };
+      for (const id of batch[i][1]) {
+        const d = devices.get(id);
+        if (d) Object.assign(d, net);
+      }
+    });
+    broadcastStats();
+    if (phase === 'reveal') await pushPhaseToAll();
+  } catch (e) {
+    console.warn('No se pudo consultar la compañía de internet:', e.message);
+  }
 }
 
 function countBy(list, key, fallback = 'Desconocido') {
@@ -92,6 +158,14 @@ function computeStats() {
     avgCores: withCores.length
       ? Math.round((withCores.reduce((s, d) => s + d.cores, 0) / withCores.length) * 10) / 10
       : null,
+    byIsp: countBy(list.filter((d) => d.isp), 'isp').slice(0, 5),
+    topCity: countBy(list.filter((d) => d.city), 'city').slice(0, 1),
+    mobileNet: list.filter((d) => d.mobileNet === true).length,
+    byApp: countBy(list.filter((d) => d.app), 'app'),
+    a11yUsers: list.filter((d) => d.a11y.length).length,
+    a11yBy: A11Y_KEYS.map((k) => [k, list.filter((d) => d.a11y.includes(k)).length])
+      .filter((e) => e[1])
+      .sort((a, b) => b[1] - a[1]),
     recent: list
       .sort((a, b) => b.t - a.t)
       .slice(0, 14)
@@ -104,6 +178,8 @@ function computeStats() {
         screen: d.screen,
         battery: d.battery,
         charging: d.charging,
+        isp: d.isp || '',
+        app: d.app,
         fp: d.fingerprint.slice(0, 8),
       })),
   };
@@ -126,7 +202,12 @@ function matchesFor(fp) {
 
 function phasePayload(socket) {
   const d = devices.get(socket.data.visitorId);
-  return { phase, matches: d ? matchesFor(d.fingerprint) : null, total: devices.size };
+  return {
+    phase,
+    matches: d ? matchesFor(d.fingerprint) : null,
+    total: devices.size,
+    net: d && d.isp ? { isp: d.isp, city: d.city, mobileNet: d.mobileNet } : null,
+  };
 }
 
 async function pushPhaseToAll() {
@@ -176,8 +257,21 @@ io.on('connection', (socket) => {
     if (!id) return;
     if (!devices.has(id) && devices.size >= MAX_DEVICES) return;
 
-    devices.set(id, { ...sanitize(payload.data), t: now });
+    const prev = devices.get(id);
+    const net = prev && prev.isp ? { isp: prev.isp, city: prev.city, mobileNet: prev.mobileNet } : {};
+    devices.set(id, { ...sanitize(payload.data), ...net, t: now });
     socket.data.visitorId = id;
+
+    if (!net.isp) {
+      const ip = clientIp(socket);
+      const sim = payload.sim;
+      if (sim && typeof sim === 'object' && isLocalSimulator(socket)) {
+        Object.assign(devices.get(id), { isp: str(sim.isp, 30), city: str(sim.city, 40), mobileNet: sim.mobileNet === true });
+      } else if (IP_LOOKUP && !isPrivateIp(ip)) {
+        queueIpLookup(ip, id);
+      }
+    }
+
     socket.emit('phase', phasePayload(socket));
     broadcastStats();
   });

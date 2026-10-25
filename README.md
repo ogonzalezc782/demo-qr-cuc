@@ -60,5 +60,22 @@ Windows...). Así ensayás el discurso mirando números realistas. `Ctrl+C` los 
 - **La huella (fingerprint):** se calcula combinando pantalla, GPU, idioma, zona
   horaria y un dibujo invisible en canvas. Dos dispositivos del mismo modelo exacto
   pueden coincidir; por eso el panel muestra el % de únicos, no un número absoluto.
+- **Compañía de internet y ciudad:** se sacan de la IP pública consultando
+  [ip-api.com](https://ip-api.com) (gratis, sin clave). La IP se manda a ese servicio
+  y se descarta; solo se guarda en memoria el nombre de la compañía, la ciudad y si es
+  datos móviles. Para apagarlo: variable `IP_LOOKUP=off`.
+  - Si todos están en el **Wi‑Fi del CUC**, todos salen con la misma compañía (la del
+    CUC). El dato luce cuando la gente usa **datos móviles**: pedí que apaguen el Wi‑Fi.
+  - Corriendo en tu compu (red local) no hay IP pública que consultar: solo aparece en
+    Render o con el simulador.
+- **Modelo exacto en Android:** Chrome ya no pone el modelo en el user agent, pero lo
+  entrega sin pedir permiso con `navigator.userAgentData.getHighEntropyValues`. Lo
+  mismo con la versión real de Android y si es Windows 10 u 11. Safari y Firefox no lo dan.
+- **"Abriste el link desde":** si el QR o el link se abre dentro de Instagram, Facebook,
+  TikTok, la app de Google, etc., se nota en el user agent. Si lo escanean con la cámara
+  normal, sale vacío.
+- **Accesibilidad:** menos movimiento, más contraste, colores forzados o invertidos se
+  leen con media queries. En iPhone también se detecta la letra grande. Buen momento
+  para decir: "esto puede insinuar una condición de salud, y nunca te lo pregunté".
 - **Cambiar la clave del panel:** variable de entorno `ADMIN_KEY`. Por defecto es `cuc2026`.
 - **Forzar la URL del QR:** variable `PUBLIC_URL` (útil si Render va detrás de otro dominio).

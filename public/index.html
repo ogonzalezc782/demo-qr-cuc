@@ -100,7 +100,61 @@
     else if (/CriOS/.test(ua)) browser = 'Chrome';
     else if (/Firefox\//.test(ua)) browser = 'Firefox';
     else if (/Version\/.*Safari/.test(ua)) browser = 'Safari';
-    return { os, osVersion, deviceType, model, browser };
+    if (model === 'K') model = ''; // Chrome reducido: el modelo real sale de uaHints()
+
+    // ¿Se abrió el link dentro de otra app?
+    let app = '';
+    if (/Instagram/.test(ua)) app = 'Instagram';
+    else if (/FBAN\/Messenger|FB_IAB\/MESSENGER/i.test(ua)) app = 'Messenger';
+    else if (/FBAN|FBAV|FB_IAB/.test(ua)) app = 'Facebook';
+    else if (/musical_ly|TikTok|BytedanceWebview/i.test(ua)) app = 'TikTok';
+    else if (/LinkedInApp/.test(ua)) app = 'LinkedIn';
+    else if (/Snapchat/.test(ua)) app = 'Snapchat';
+    else if (/\bLine\//.test(ua)) app = 'LINE';
+    else if (/GSA\//.test(ua)) app = 'App de Google';
+    else if (/; wv\)/.test(ua)) app = 'Otra app';
+    return { os, osVersion, deviceType, model, browser, app };
+  }
+
+  // Chrome ya no pone el modelo ni la versión real en el user agent, pero los entrega si se le piden
+  async function uaHints(p) {
+    try {
+      if (!navigator.userAgentData || !navigator.userAgentData.getHighEntropyValues) return;
+      const h = await navigator.userAgentData.getHighEntropyValues(['model', 'platformVersion']);
+      if (h.model) p.model = h.model;
+      const v = h.platformVersion || '';
+      if (!v) return;
+      if (p.os === 'Android') p.osVersion = v.split('.')[0];
+      else if (p.os === 'Windows') p.osVersion = parseInt(v, 10) >= 13 ? '11' : '10';
+      else if (p.os === 'macOS') p.osVersion = v.split('.').slice(0, 2).join('.');
+    } catch (e) {}
+  }
+
+  // Ajustes de accesibilidad: se leen con media queries, sin pedir nada
+  const A11Y_LABELS = {
+    motion: 'Menos movimiento', contrast: 'Más contraste', forced: 'Colores forzados',
+    inverted: 'Colores invertidos', transparency: 'Menos transparencia', largeText: 'Letra grande',
+  };
+  function a11yPrefs() {
+    const mq = (q) => window.matchMedia && window.matchMedia(q).matches;
+    const out = [];
+    if (mq('(prefers-reduced-motion: reduce)')) out.push('motion');
+    if (mq('(prefers-contrast: more)')) out.push('contrast');
+    if (mq('(forced-colors: active)')) out.push('forced');
+    if (mq('(inverted-colors: inverted)')) out.push('inverted');
+    if (mq('(prefers-reduced-transparency: reduce)')) out.push('transparency');
+    // iPhone: el tamaño de letra del sistema (Dynamic Type) es 17px por defecto
+    try {
+      if (/iPhone|iPad/.test(navigator.userAgent)) {
+        const el = document.createElement('span');
+        el.style.font = '-apple-system-body';
+        document.body.appendChild(el);
+        const px = parseFloat(getComputedStyle(el).fontSize);
+        el.remove();
+        if (px > 17) out.push('largeText');
+      }
+    } catch (e) {}
+    return out;
   }
 
   function gpuInfo() {
@@ -141,6 +195,7 @@
 
   async function collect() {
     const p = parseUA();
+    await uaHints(p);
     let battery = null, charging = null;
     try {
       if (navigator.getBattery) {
@@ -168,6 +223,7 @@
       touch: navigator.maxTouchPoints || 0,
       darkMode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
       connection: (navigator.connection && navigator.connection.effectiveType) || '',
+      a11y: a11yPrefs(),
       fingerprint: hash(raw),
     };
   }
@@ -188,7 +244,7 @@
   socket.on('phase', (st) => {
     if (st && typeof st.total === 'number') document.getElementById('count').textContent = st.total;
     if (!st) return;
-    if (st.phase === 'reveal') showReveal(st.matches);
+    if (st.phase === 'reveal') showReveal(st.matches, st.net);
     else { card.classList.remove('show-reveal'); document.getElementById('reveal').classList.remove('show'); }
   });
 
@@ -201,7 +257,7 @@
     return `<li><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></li>`;
   }
 
-  function showReveal(matches) {
+  function showReveal(matches, net) {
     if (!myData) return;
     card.classList.add('show-reveal');
     const r = document.getElementById('reveal');
@@ -222,6 +278,10 @@
       row('Tarjeta gráfica', d.gpu),
       row('Modo oscuro', d.darkMode ? 'Sí' : 'No'),
       row('Red', d.connection),
+      row('Compañía', net && net.isp ? net.isp + (net.mobileNet ? ' (datos móviles)' : '') : null),
+      row('Ubicación aprox.', net && net.city),
+      row('Abriste el link desde', d.app),
+      row('Accesibilidad', (d.a11y || []).map((k) => A11Y_LABELS[k]).join(', ')),
     ].join('');
 
     const unique = matches === 0 || matches === null;

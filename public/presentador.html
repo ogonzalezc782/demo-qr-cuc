@@ -71,6 +71,7 @@
   <div class="panel"><h2>Sistema operativo</h2><div id="byOS"></div></div>
   <div class="panel"><h2>Navegador</h2><div id="byBrowser"></div></div>
   <div class="panel"><h2>Tipo de dispositivo</h2><div id="byType"></div></div>
+  <div class="panel"><h2>Compañía de internet</h2><div id="byIsp"></div></div>
 
   <div class="panel">
     <h2>Otros datos capturados</h2>
@@ -99,6 +100,10 @@
 
   // Los textos vienen de los celulares: escaparlos antes de meterlos en innerHTML
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const A11Y_LABELS = {
+    motion: 'menos movimiento', contrast: 'más contraste', forced: 'colores forzados',
+    inverted: 'colores invertidos', transparency: 'menos transparencia', largeText: 'letra grande',
+  };
 
   function bars(el, entries, total) {
     if (!entries.length) { el.innerHTML = '<p class="muted">—</p>'; return; }
@@ -120,6 +125,7 @@
     bars(document.getElementById('byOS'), s.byOS, s.total);
     bars(document.getElementById('byBrowser'), s.byBrowser, s.total);
     bars(document.getElementById('byType'), s.byType, s.total);
+    bars(document.getElementById('byIsp'), s.byIsp, s.total);
 
     const chips = [];
     if (s.timezones.length) chips.push(`<span class="chip">🌎 <b>${esc(s.timezones[0][0])}</b></span>`);
@@ -128,12 +134,17 @@
     chips.push(`<span class="chip">⚡ <b>${s.charging}</b> cargando ahora</span>`);
     chips.push(`<span class="chip">🌙 <b>${s.darkPct}%</b> en modo oscuro</span>`);
     if (s.topGpu.length) chips.push(`<span class="chip">🎮 <b>${esc(s.topGpu[0][0].slice(0, 28))}</b></span>`);
+    if (s.topCity.length) chips.push(`<span class="chip">📍 <b>${esc(s.topCity[0][0])}</b> (por la IP)</span>`);
+    chips.push(`<span class="chip">📶 <b>${s.mobileNet}</b> con datos móviles</span>`);
+    if (s.byApp.length) chips.push(`<span class="chip">📲 <b>${s.byApp.reduce((n, e) => n + e[1], 0)}</b> abrieron desde ${esc(s.byApp.map((e) => e[0]).join(', '))}</span>`);
+    if (s.a11yUsers) chips.push(`<span class="chip">♿ <b>${s.a11yUsers}</b> con ajustes de accesibilidad (${esc(s.a11yBy.map(([k, n]) => A11Y_LABELS[k] + ': ' + n).join(', '))})</span>`);
     document.getElementById('chips').innerHTML = chips.join('');
 
     const feed = document.getElementById('feed');
     if (!s.recent.length) { feed.innerHTML = '<p class="muted">Esperando conexiones…</p>'; return; }
     feed.innerHTML = s.recent.map((d) => {
-      const name = [d.os, d.osVersion].filter(Boolean).join(' ') + (d.model ? ' · ' + d.model : '') + ' · ' + d.browser;
+      const name = [d.os, d.osVersion].filter(Boolean).join(' ') + (d.model ? ' · ' + d.model : '') + ' · ' + d.browser
+        + (d.app ? ' (en ' + d.app + ')' : '') + (d.isp ? ' · ' + d.isp : '');
       const batt = d.battery !== null ? d.battery + '%' + (d.charging ? '⚡' : '') : '';
       return `<div class="feed-item"><span>${esc(name)} <span class="muted">${esc(d.screen)}</span></span>
         <span><span class="fp">#${esc(d.fp)}</span> ${esc(batt)}</span></div>`;

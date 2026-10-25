@@ -26,6 +26,10 @@ const perfiles = [
 
 const tzs = ['America/Costa_Rica', 'America/Costa_Rica', 'America/Costa_Rica', 'America/Managua'];
 const langs = ['es-CR', 'es-419', 'es', 'en-US'];
+const isps = ['Kölbi', 'Kölbi', 'Kölbi', 'Claro', 'Liberty', 'Liberty', 'Cabletica', 'Tigo'];
+const cities = ['San José', 'San José', 'Alajuela', 'Cartago', 'Heredia'];
+const apps = ['', '', '', '', '', '', '', '', 'Instagram', 'Facebook', 'TikTok', 'App de Google'];
+const a11ys = [[], [], [], [], [], [], [], [], ['largeText'], ['motion'], ['contrast'], ['largeText', 'motion']];
 const rnd = (a) => a[Math.floor(Math.random() * a.length)];
 
 const sockets = [];
@@ -56,8 +60,12 @@ for (let i = 0; i < N; i++) {
           touch: p.deviceType.includes('Android') || p.deviceType.includes('iPhone') ? 5 : 0,
           darkMode: Math.random() < 0.5,
           connection: rnd(['4g', '4g', '5g', 'wifi']),
+          app: rnd(apps),
+          a11y: rnd(a11ys),
           fingerprint: fp,
         },
+        // Compañía inventada: el servidor solo la acepta si el simulador corre en la misma compu
+        sim: { isp: rnd(isps), city: rnd(cities), mobileNet: Math.random() < 0.6 },
       });
       if (connected === N) console.log(`✓ ${N} dispositivos conectados. Abrí el panel del presentador para verlos.`);
     });
