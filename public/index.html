@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>¡Bienvenidos a la charla!</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+    color: #fff; padding: 24px; text-align: center;
+  }
+  .card { max-width: 420px; width: 100%; }
+  .emoji { font-size: 64px; margin-bottom: 16px; }
+  h1 { font-size: 26px; margin-bottom: 12px; line-height: 1.25; }
+  p { font-size: 16px; color: #cbd5e1; line-height: 1.5; margin-bottom: 20px; }
+  .dot {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,.1); padding: 10px 18px; border-radius: 999px;
+    font-size: 14px; color: #e2e8f0;
+  }
+  .pulse { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; animation: p 1.4s infinite; }
+  @keyframes p { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .count { margin-top: 24px; font-size: 14px; color: #94a3b8; }
+  .count b { color: #fff; font-size: 18px; }
+
+  /* Revelación */
+  #reveal { display: none; text-align: left; }
+  #reveal.show { display: block; }
+  .card.show-reveal .welcome { display: none; }
+  .reveal-h { font-size: 22px; text-align: center; margin-bottom: 6px; }
+  .reveal-sub { text-align: center; font-size: 14px; color: #fca5a5; margin-bottom: 20px; }
+  .data-list { list-style: none; }
+  .data-list li {
+    display: flex; justify-content: space-between; gap: 12px;
+    padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 14px;
+  }
+  .data-list .k { color: #94a3b8; }
+  .data-list .v { color: #fff; font-weight: 600; text-align: right; word-break: break-word; }
+  .warn {
+    margin-top: 20px; background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.4);
+    border-radius: 12px; padding: 14px; font-size: 13px; color: #fecaca; line-height: 1.5;
+  }
+  .me { margin-top:16px; font-size:13px; color:#94a3b8; text-align:center;}
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="welcome">
+    <div class="emoji">👋</div>
+    <h1>¡Bienvenidos a la charla!</h1>
+    <p>Gracias por conectarte. En un momento empezamos.</p>
+    <div class="dot"><span class="pulse"></span> Conectado</div>
+    <div class="count">Personas conectadas: <b id="count">—</b></div>
+  </div>
+
+  <div id="reveal">
+    <h2 class="reveal-h">Esto es lo que tu celular<br>me contó solito 👀</h2>
+    <p class="reveal-sub">Nunca te pedí permiso para nada de esto</p>
+    <ul class="data-list" id="dataList"></ul>
+    <div class="warn" id="fpWarn"></div>
+    <div class="me" id="meInfo"></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function () {
+  // ---- ID estable por dispositivo (solo para contar, no es personal) ----
+  let vid = localStorage.getItem('vid');
+  if (!vid) { vid = 'v-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('vid', vid); }
+
+  // ---- Recolección de datos del navegador ----
+  function parseUA() {
+    const ua = navigator.userAgent;
+    let os = 'Desconocido', osVersion = '', deviceType = 'Computadora', model = '';
+    if (/iPhone/.test(ua)) { os = 'iOS'; deviceType = 'iPhone'; const m = ua.match(/OS (\d+[_.]\d+)/); if (m) osVersion = m[1].replace('_', '.'); }
+    else if (/iPad/.test(ua)) { os = 'iPadOS'; deviceType = 'iPad'; }
+    else if (/Android/.test(ua)) {
+      os = 'Android'; deviceType = 'Teléfono Android';
+      const v = ua.match(/Android (\d+(?:\.\d+)?)/); if (v) osVersion = v[1];
+      const m = ua.match(/;\s?([^;]+)\sBuild/); if (m) model = m[1].trim();
+      const m2 = ua.match(/;\s?([A-Za-z0-9\- ]+)\)\s*AppleWebKit/); if (!model && m2) model = m2[1].trim();
+    }
+    else if (/Windows NT/.test(ua)) { os = 'Windows'; const m = ua.match(/Windows NT (\d+\.\d+)/); if (m) osVersion = ({ '10.0': '10/11', '6.3': '8.1', '6.1': '7' })[m[1]] || m[1]; }
+    else if (/Mac OS X/.test(ua)) { os = 'macOS'; deviceType = 'Mac'; const m = ua.match(/Mac OS X (\d+[_.]\d+)/); if (m) osVersion = m[1].replace(/_/g, '.'); }
+    else if (/Linux/.test(ua)) { os = 'Linux'; }
+
+    let browser = 'Desconocido';
+    if (/Edg\//.test(ua)) browser = 'Edge';
+    else if (/OPR\//.test(ua)) browser = 'Opera';
+    else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = 'Chrome';
+    else if (/CriOS/.test(ua)) browser = 'Chrome';
+    else if (/Firefox\//.test(ua)) browser = 'Firefox';
+    else if (/Version\/.*Safari/.test(ua)) browser = 'Safari';
+    return { os, osVersion, deviceType, model, browser };
+  }
+
+  function gpuInfo() {
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+      if (!gl) return '';
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)).slice(0, 100) : '';
+    } catch (e) { return ''; }
+  }
+
+  // Huella por canvas: dibuja algo y lo convierte en un hash corto
+  function canvasFp() {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 240; c.height = 60;
+      const ctx = c.getContext('2d');
+      ctx.textBaseline = 'top';
+      ctx.font = "16px 'Arial'";
+      ctx.fillStyle = '#f60'; ctx.fillRect(10, 10, 100, 30);
+      ctx.fillStyle = '#069'; ctx.fillText('CUC-charla-7g$', 12, 14);
+      ctx.fillStyle = 'rgba(102,0,153,0.7)'; ctx.fillText('CUC-charla-7g$', 14, 16);
+      return c.toDataURL();
+    } catch (e) { return navigator.userAgent; }
+  }
+  function hash(s) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+  }
+
+  async function collect() {
+    const p = parseUA();
+    let battery = null, charging = null;
+    try {
+      if (navigator.getBattery) {
+        const b = await navigator.getBattery();
+        battery = Math.round(b.level * 100);
+        charging = b.charging;
+      }
+    } catch (e) {}
+    const gpu = gpuInfo();
+    const raw = [
+      navigator.userAgent, screen.width + 'x' + screen.height, screen.colorDepth,
+      new Date().getTimezoneOffset(), navigator.language, (navigator.languages || []).join(','),
+      navigator.hardwareConcurrency, navigator.deviceMemory, gpu, canvasFp(),
+    ].join('###');
+
+    return {
+      ...p,
+      screen: screen.width + '×' + screen.height,
+      pixelRatio: window.devicePixelRatio || 1,
+      language: navigator.language || '',
+      timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone) || '',
+      cores: navigator.hardwareConcurrency || null,
+      memory: navigator.deviceMemory || null,
+      battery, charging, gpu,
+      touch: navigator.maxTouchPoints || 0,
+      darkMode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
+      connection: (navigator.connection && navigator.connection.effectiveType) || '',
+      fingerprint: hash(raw),
+    };
+  }
+
+  // ---- Conexión ----
+  const socket = io();
+  let myData = null;
+
+  collect().then((data) => {
+    myData = data;
+    socket.emit('report', { visitorId: vid, data });
+  });
+
+  socket.on('connect', () => { if (myData) socket.emit('report', { visitorId: vid, data: myData }); });
+
+  const card = document.getElementById('card');
+
+  socket.on('phase', (st) => {
+    if (st && typeof st.total === 'number') document.getElementById('count').textContent = st.total;
+    if (!st) return;
+    if (st.phase === 'reveal') showReveal(st.matches);
+    else { card.classList.remove('show-reveal'); document.getElementById('reveal').classList.remove('show'); }
+  });
+
+  socket.on('reset', () => location.reload());
+
+  function row(k, v) {
+    if (v === null || v === undefined || v === '') return '';
+    return `<li><span class="k">${k}</span><span class="v">${v}</span></li>`;
+  }
+
+  function showReveal(matches) {
+    if (!myData) return;
+    card.classList.add('show-reveal');
+    const r = document.getElementById('reveal');
+    r.classList.add('show');
+    const d = myData;
+    const batt = d.battery !== null ? d.battery + '%' + (d.charging ? ' ⚡' : '') : null;
+    document.getElementById('dataList').innerHTML = [
+      row('Sistema', d.os + (d.osVersion ? ' ' + d.osVersion : '')),
+      row('Dispositivo', d.deviceType),
+      row('Modelo', d.model),
+      row('Navegador', d.browser),
+      row('Pantalla', d.screen + (d.pixelRatio ? ' @' + d.pixelRatio + 'x' : '')),
+      row('Idioma', d.language),
+      row('Zona horaria', d.timezone),
+      row('Núcleos CPU', d.cores),
+      row('Memoria', d.memory ? d.memory + ' GB' : null),
+      row('Batería', batt),
+      row('Tarjeta gráfica', d.gpu),
+      row('Modo oscuro', d.darkMode ? 'Sí' : 'No'),
+      row('Red', d.connection),
+    ].join('');
+
+    const unique = matches === 0 || matches === null;
+    document.getElementById('fpWarn').innerHTML = unique
+      ? `🔒 Tu huella digital es <b>#${d.fingerprint.slice(0, 8)}</b>.<br>En esta sala <b>no hay ningún otro celular igual al tuyo</b>. Así te pueden seguir por internet sin cookies y sin tu nombre.`
+      : `🔒 Tu huella es <b>#${d.fingerprint.slice(0, 8)}</b> y coincide con ${matches} más. Suele pasar entre iPhones del mismo modelo. Igual sigues siendo rastreable combinando otros datos.`;
+    document.getElementById('meInfo').textContent = 'Nada de esto se guarda. Se borra al terminar la charla.';
+  }
+})();
+</script>
+</body>
+</html>

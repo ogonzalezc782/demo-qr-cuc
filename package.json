@@ -1,0 +1,21 @@
+{
+  "name": "demo-qr-cuc",
+  "version": "1.0.0",
+  "description": "Demo en vivo: lo que tu celular revela sin pedir permiso. Charla 'Datos, IA y confianza' - CUC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "simular": "node scripts/simular.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.0"
+  }
+}

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Panel del presentador</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0; padding: 20px; min-height: 100vh;
+  }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  h1 { font-size: 20px; color: #fff; }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font-size: 15px; font-weight: 600; padding: 10px 20px; border: none; border-radius: 10px;
+    cursor: pointer; transition: transform .1s, opacity .2s;
+  }
+  button:active { transform: scale(.96); }
+  .btn-reveal { background: #ef4444; color: #fff; }
+  .btn-welcome { background: #334155; color: #e2e8f0; }
+  .btn-reset { background: transparent; color: #64748b; border: 1px solid #334155; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .panel { background: #1e293b; border-radius: 14px; padding: 18px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: #94a3b8; margin-bottom: 14px; }
+  .big { font-size: 56px; font-weight: 800; color: #fff; line-height: 1; }
+  .big-sub { font-size: 14px; color: #94a3b8; margin-top: 6px; }
+  .hero { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 16px; }
+  .hero .panel { text-align: center; }
+  .accent .big { color: #f87171; }
+  .green .big { color: #4ade80; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 14px; }
+  .bar-label { width: 110px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1; background: #0f172a; border-radius: 6px; height: 22px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg,#3b82f6,#60a5fa); border-radius: 6px; transition: width .4s; }
+  .bar-val { width: 36px; text-align: right; color: #fff; font-weight: 600; }
+  .feed { max-height: 320px; overflow-y: auto; }
+  .feed-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #334155; font-size: 13px; }
+  .feed-item .fp { font-family: monospace; color: #fbbf24; }
+  .muted { color: #64748b; font-size: 13px; }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #4ade80; }
+  .live .d { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: #0f172a; padding: 6px 12px; border-radius: 999px; font-size: 13px; }
+  .chip b { color: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Panel del presentador <span class="live"><span class="d"></span>en vivo</span></h1>
+  <div class="controls">
+    <button class="btn-welcome" id="bWelcome">Pantalla bienvenida</button>
+    <button class="btn-reveal" id="bReveal">🔴 REVELAR a todos</button>
+    <button class="btn-reset" id="bReset">Borrar todo</button>
+  </div>
+</header>
+
+<div class="grid">
+  <div class="hero">
+    <div class="panel"><div class="big" id="total">0</div><div class="big-sub">Celulares conectados</div></div>
+    <div class="panel accent"><div class="big" id="unique">0%</div><div class="big-sub">Con huella única e irrepetible</div></div>
+    <div class="panel green"><div class="big" id="battery">—</div><div class="big-sub">Batería promedio del aula</div></div>
+    <div class="panel"><div class="big" id="cores">—</div><div class="big-sub">Núcleos de CPU promedio</div></div>
+  </div>
+
+  <div class="panel"><h2>Sistema operativo</h2><div id="byOS"></div></div>
+  <div class="panel"><h2>Navegador</h2><div id="byBrowser"></div></div>
+  <div class="panel"><h2>Tipo de dispositivo</h2><div id="byType"></div></div>
+
+  <div class="panel">
+    <h2>Otros datos capturados</h2>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="panel" style="grid-column: 1 / -1;">
+    <h2>Últimos dispositivos (llegando en vivo)</h2>
+    <div class="feed" id="feed"><p class="muted">Esperando conexiones…</p></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function () {
+  const key = new URLSearchParams(location.search).get('key');
+  const socket = io({ auth: { role: 'presenter', key } });
+
+  socket.on('auth-error', () => { document.body.innerHTML = '<h1 style="padding:40px">Clave incorrecta</h1>'; });
+
+  document.getElementById('bReveal').onclick = () => socket.emit('set-phase', 'reveal');
+  document.getElementById('bWelcome').onclick = () => socket.emit('set-phase', 'welcome');
+  document.getElementById('bReset').onclick = () => {
+    if (confirm('¿Borrar todos los datos capturados? Esto reinicia la demo.')) socket.emit('reset');
+  };
+
+  function bars(el, entries, total) {
+    if (!entries.length) { el.innerHTML = '<p class="muted">—</p>'; return; }
+    const max = Math.max(...entries.map((e) => e[1]));
+    el.innerHTML = entries.map(([label, n]) => {
+      const pct = max ? Math.round((n / max) * 100) : 0;
+      return `<div class="bar-row"><span class="bar-label">${label}</span>
+        <span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span>
+        <span class="bar-val">${n}</span></div>`;
+    }).join('');
+  }
+
+  socket.on('stats', (s) => {
+    document.getElementById('total').textContent = s.total;
+    document.getElementById('unique').textContent = s.uniquePct + '%';
+    document.getElementById('battery').textContent = s.avgBattery !== null ? s.avgBattery + '%' : '—';
+    document.getElementById('cores').textContent = s.avgCores !== null ? s.avgCores : '—';
+
+    bars(document.getElementById('byOS'), s.byOS, s.total);
+    bars(document.getElementById('byBrowser'), s.byBrowser, s.total);
+    bars(document.getElementById('byType'), s.byType, s.total);
+
+    const chips = [];
+    if (s.timezones.length) chips.push(`<span class="chip">🌎 <b>${s.timezones[0][0]}</b></span>`);
+    if (s.languages.length) chips.push(`<span class="chip">🗣️ <b>${s.languages[0][0]}</b> y ${s.languages.length - 1} más</span>`);
+    chips.push(`<span class="chip">🔋 <b>${s.lowBattery}</b> con batería baja (≤20%)</span>`);
+    chips.push(`<span class="chip">⚡ <b>${s.charging}</b> cargando ahora</span>`);
+    chips.push(`<span class="chip">🌙 <b>${s.darkPct}%</b> en modo oscuro</span>`);
+    if (s.topGpu.length) chips.push(`<span class="chip">🎮 <b>${s.topGpu[0][0].slice(0, 28)}</b></span>`);
+    document.getElementById('chips').innerHTML = chips.join('');
+
+    const feed = document.getElementById('feed');
+    if (!s.recent.length) { feed.innerHTML = '<p class="muted">Esperando conexiones…</p>'; return; }
+    feed.innerHTML = s.recent.map((d) => {
+      const name = [d.os, d.osVersion].filter(Boolean).join(' ') + (d.model ? ' · ' + d.model : '') + ' · ' + d.browser;
+      const batt = d.battery !== null ? d.battery + '%' + (d.charging ? '⚡' : '') : '';
+      return `<div class="feed-item"><span>${name} <span class="muted">${d.screen}</span></span>
+        <span><span class="fp">#${d.fp}</span> ${batt}</span></div>`;
+    }).join('');
+  });
+})();
+</script>
+</body>
+</html>
